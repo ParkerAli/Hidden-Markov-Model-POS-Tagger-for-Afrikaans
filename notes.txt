@@ -1,0 +1,5 @@
+EDA
+- Need to figure out what is relevant.
+- Histograms will work regardless
+- Might need to split each tag into it's components (painful) and count those
+- Some tokens may need to be deleted (stopwords and punctuation) but because we're modelling POS might be a dumb idea
