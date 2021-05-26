@@ -4,3 +4,6 @@ EDA
 - Might need to split each tag into it's components (painful) and count those
 - Some tokens may need to be deleted (stopwords and punctuation) but because we're modelling POS might be a dumb idea
 - Can use GGPlot with plotnine (pretty cool option)
+
+Data Prep
+- Might need to arrange data so that each sentence is in its own cell instead of each word in its own cell
