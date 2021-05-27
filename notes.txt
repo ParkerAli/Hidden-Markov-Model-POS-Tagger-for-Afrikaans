@@ -10,3 +10,4 @@ Data Prep
 
 HMM
 - brilliant implementation (https://www.mygreatlearning.com/blog/pos-tagging/)
+- another really good source (https://github.com/amanjeetsahu/Natural-Language-Processing-Specialization/blob/master/Natural%20Language%20Processing%20with%20Probabilistic%20Models/Week%202/C2_W2_Assignment_Solution.ipynb)
