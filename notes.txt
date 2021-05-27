@@ -7,3 +7,6 @@ EDA
 
 Data Prep
 - Might need to arrange data so that each sentence is in its own cell instead of each word in its own cell
+
+HMM
+- brilliant implementation (https://www.mygreatlearning.com/blog/pos-tagging/)

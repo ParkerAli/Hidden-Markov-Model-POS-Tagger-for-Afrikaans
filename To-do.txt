@@ -1,0 +1,5 @@
+Data Processing
+
+HMM
+- compute emission probs
+- compute transition probs
