@@ -1,4 +1,5 @@
 EDA
+- Fix "NA" tag issue
 - most frequent words for each tag type
 
 Data Processing
