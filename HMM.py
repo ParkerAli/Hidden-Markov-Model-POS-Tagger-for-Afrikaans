@@ -68,11 +68,10 @@ class HMM(object):
 
         for i,tag_1 in enumerate(tags_list):
             for j,tag_2 in enumerate(tags_list):
-                print(tag_1,tag_2,self.calculate_transition_probability(tag_1=tag_1,tag_2=tag_2,bag=self.training_set))
                 tags_transition_matrix[i,j] = self.calculate_transition_probability(tag_1=tag_1,tag_2=tag_2,bag=self.training_set)
 
 
-        print(tags_transition_matrix)
+        return tags_transition_matrix
 
 
 if __name__ == "__main__":
