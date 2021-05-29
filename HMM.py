@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
 from collections import defaultdict
+from queue import PriorityQueue
 
 class HMM(object):
 
     def __init__(self,directory_name : str) -> None:
-        self.training_set = self.process(pd.read_csv(f"{directory_name}\\train copy.csv",na_filter=True)) # I used windows so change \\ to /
+        self.training_set = self.process(pd.read_csv(f"{directory_name}\\train copy.csv",na_filter=False)) # I used windows so change \\ to /
 
 
     def process(self,df) -> list:
@@ -17,11 +18,17 @@ class HMM(object):
         processed_df = defaultdict(int)
         self.tags = defaultdict(set)
 
-        for i,row in enumerate(df.itertuples(index=False)):
+        self.tags['<s>'].add(0)
 
-            if not pd.isna(row[1]):                
+        for i,row in enumerate(df.itertuples(index=True)):
+
+            if  row[0] != "NA" and row[1] != "NA":
                 processed_df[row] += 1
-                self.tags[row[1]].add(i)
+                self.tags[row[1]].add(i+1)
+            else:
+                self.tags['<s>'].add(i+1) # Begin sentence tokens
+        
+        self.tags['<s>'].remove(max(self.tags['<s>']))
 
         return processed_df
 
@@ -32,8 +39,7 @@ class HMM(object):
     def get_vocab(self,df) -> set:
         return {tup[0] for tup in df}
 
-
-    def calculate_emmision_probability(self,word,tag,bag) -> float:
+    def calculate_emmision_probability(self,word,tag,bag) -> tuple:
         """
         Calculates Pr(word|tag)
         """
@@ -46,13 +52,13 @@ class HMM(object):
 
     def calculate_transition_probability(self,tag_1,tag_2,bag) -> float:
         """
-        Calculates the probability of tag 2 appearing after tag 2.
+        Calculates the probability of tag 2 appearing after tag 1.
         """
         tag_1_count = sum(bag[pair] for pair in bag if pair[1]==tag_1)
         tag_1_then_tag_2_count = 0
         
-        for v in self.tags[tag_1]:
-            if v+1 in self.tags[tag_2]:
+        for index in self.tags[tag_1]:
+            if index+1 in self.tags[tag_2]:
                 tag_1_then_tag_2_count+=1
 
         return tag_1_then_tag_2_count / tag_1_count
@@ -70,14 +76,33 @@ class HMM(object):
             for j,tag_2 in enumerate(tags_list):
                 tags_transition_matrix[i,j] = self.calculate_transition_probability(tag_1=tag_1,tag_2=tag_2,bag=self.training_set)
 
+        return tags_transition_matrix,tags_list
 
-        return tags_transition_matrix
 
+    def dp_viterbi_algorithm(self,words,bag,matrix,tags_list):
+        pass
+        # states = []
+
+        # for i,word in enumerate(words):
+        #     p_max = float('-inf')
+        #     p_max_index=-1
+        #     p =[]
+        #     for tag in tags_list:
+        #         if i == 0:
+        #             tag_prob = matrix['<s>',tag]
+        #         else:
+        #             tag_prob = matrix[states[-1],tag]
+        #         emission_probability = self.calculate_emmision_probability(word,tag,bag)
+        #         state_prob = emission_probability*tag_prob
+        #         p.append(state_prob)
+        #         if p_max > state_prob:
+
+        #         p_max = max(state_prob,p_max)
 
 if __name__ == "__main__":
 
     hmm = HMM("AfrikaansPOSData")
 
-    hmm.create_transition_matrix()
+    # hmm.create_transition_matrix()
 
 
