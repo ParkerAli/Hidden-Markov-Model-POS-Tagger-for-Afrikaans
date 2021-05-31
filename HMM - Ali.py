@@ -73,7 +73,7 @@ class HMM(object):
     def get_vocab(self, df) -> set:
         return {tup[0] for tup in df}
 
-    def calculate_emmision_probability(self, word, tag) -> tuple:
+    def calculate_emmision_probability(self, word, tag) -> tuple: #unigram
         """
         Calculates Pr(word|tag)
         """
@@ -85,7 +85,7 @@ class HMM(object):
 
         return words_tag_count / tag_count
 
-    def calculate_transition_probability(self, tag_1, tag_2) -> float:
+    def calculate_transition_probability(self, tag_1, tag_2) -> float: #bigram numberator
         """
         Calculates the probability of tag 2 appearing after tag 1.
         """
@@ -96,7 +96,20 @@ class HMM(object):
             if index + 1 in self.tags[tag_2]:
                 tag_1_then_tag_2_count += 1
 
-        return (tag_1_then_tag_2_count + 1) / (tag_1_count + len(self.vocab))
+        return (tag_1_then_tag_2_count) #/ (tag_1_count)
+
+    def trigram(self, tag_1, tag_2, tag_3) -> float: #trigram
+        """
+        Calculates the probability of tag 3 appearing after tag 2 and tag 1.
+        """
+        tag_1_then_tag_2_count = self.calculate_transition_probability(tag_1=tag_1, tag_2= tag_2)
+        tag_1_then_tag_2_then_tag_3_count = 0
+
+        for index in self.tags[tag_1]:
+            if index + 1 in self.tags[tag_2] and index + 2 in self.tags[tag_3]:
+                tag_1_then_tag_2_then_tag_3_count += 1
+
+        return (tag_1_then_tag_2_then_tag_3_count + 1) / (tag_1_then_tag_2_count + len(self.vocab))
 
     def create_transition_matrix(self) -> np.matrix:
         """
@@ -104,13 +117,14 @@ class HMM(object):
         """
         tags_list = list(self.tags.keys())
         tags_count = len(tags_list)
-        tags_transition_matrix = np.zeros((tags_count, tags_count), dtype="float64")
+        tags_transition_matrix = np.zeros((tags_count, tags_count, tags_count), dtype="float64")
 
         for i, tag_1 in enumerate(tags_list):
             for j, tag_2 in enumerate(tags_list):
-                tags_transition_matrix[i, j] = self.calculate_transition_probability(tag_1=tag_1, tag_2=tag_2)
+                for k, tag_3 in enumerate(tags_list):
+                    tags_transition_matrix[i, j, k] = self.trigram(tag_1=tag_1, tag_2=tag_2, tag_3 = tag_3)
 
-        return tags_transition_matrix, tags_list
+        return tags_transition_matrix #, tags_list
 
     def classification(self, pairs=None):
 
@@ -135,41 +149,99 @@ class HMM(object):
 
             actual_list.append(actual[1])
             predicted_list.append(predicted[1])
-
             c += actual == predicted
 
         pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("cp2.csv")
 
         return c / (len(pairs) - s_tags-unk_tags)
 
-    def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
-        if not words:
-            words = self.word_tag_pairs
+    # def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
+    #     if not words:
+    #         words = self.word_tag_pairs
+    #
+    #     start_index = tags_list.index("<s>")
+    #
+    #     for i, word in enumerate(words):
+    #
+    #         p_max = float('-inf')
+    #         p_max_index = -1
+    #
+    #         for j, tag in enumerate(tags_list):
+    #             if i == 0:
+    #                 tag_prob = matrix[start_index, j]
+    #             else:
+    #                 tag_prob = matrix[p_max_index, j]
+    #
+    #             emission_probability = self.calculate_emmision_probability(word, tag)
+    #             state_prob = emission_probability * tag_prob
+    #
+    #             if p_max < state_prob:
+    #                 p_max_index = j
+    #                 p_max = state_prob
+    #
+    #         if word != "<s>" and tags_list[p_max_index] == "<s>":
+    #             yield word, "<UNK>"
+    #         else:
+    #             yield word, tags_list[p_max_index]
+    def viterbi(self,sent,method='UNK'):
+        V = {}
+        path = {}
+        # init
+        V[0,'',''] = 1
+        path['',''] = []
+        # run
+        #sys.stderr.write("entering k loop\n")
+        for k in range(1,len(sent)+1):
+            temp_path = {}
+            word = self.get_word(sent,k-1)
+            ## handling unknown words in test set using low freq words in training set
+            # if word not in self.words:
+            #     print word
+            #     if method=='UNK':
+            #         word = '<UNK>'
+            #     elif method == 'MORPHO':
+            #         word = self.subcategorize(word)
+            #sys.stderr.write("entering u loop "+str(k)+"\n")
+            for u in self.get_possible_tags(k-1):
+                #sys.stderr.write("entering v loop "+str(u)+"\n")
+                for v in self.get_possible_tags(k):
+                    V[k,u,v],prev_w = max([(V[k-1,w,u] * self.Q[w,u,v] * self.E[word,v],w) for w in self.get_possible_tags(k-2)])
+                    temp_path[u,v] = path[prev_w,u] + [v]
+            path = temp_path
+        # last step
+        prob,umax,vmax = max([(V[len(sent),u,v] * self.Q[u,v,''],u,v) for u in self.tags for v in self.tags])
+        return path[umax,vmax]
 
-        start_index = tags_list.index("<s>")
 
-        for i, word in enumerate(words):
-
-            p_max = float('-inf')
-            p_max_index = -1
-
-            for j, tag in enumerate(tags_list):
-                if i == 0:
-                    tag_prob = matrix[start_index, j]
-                else:
-                    tag_prob = matrix[p_max_index, j]
-
-                emission_probability = self.calculate_emmision_probability(word, tag)
-                state_prob = emission_probability * tag_prob
-
-                if p_max < state_prob:
-                    p_max_index = j
-                    p_max = state_prob
-
-            if word != "<s>" and tags_list[p_max_index] == "<s>":
-                yield word, "<UNK>"
-            else:
-                yield word, tags_list[p_max_index]
+    # def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
+    #     if not words:
+    #         words = self.word_tag_pairs
+    #
+    #     start_index = tags_list.index("<s>")
+    #
+    #     for i, word in enumerate(words):
+    #
+    #         p_max = float('-inf')
+    #         p_max_index = -1
+    #
+    #         for j, tag in enumerate(tags_list):
+    #             for k, tag_2 in enumerate(tags_list):
+    #                 if i == 0:
+    #                     tag_prob = matrix[start_index, j,k]
+    #                 else:
+    #                     tag_prob = matrix[p_max_index, j,k]
+    #
+    #                 emission_probability = self.calculate_emmision_probability(word, tag)
+    #                 state_prob = emission_probability * tag_prob
+    #
+    #                 if p_max < state_prob:
+    #                     p_max_index = k
+    #                     p_max = state_prob
+    #
+    #         if word != "<s>" and tags_list[p_max_index] == "<s>":
+    #             yield word, "<UNK>"
+    #         else:
+    #             yield word, tags_list[p_max_index]
 
 
 if __name__ == "__main__":
@@ -192,9 +264,9 @@ if __name__ == "__main__":
     ]
 
     import time
-
     t0 = time.time()
-    print(hmm.classification(hmm.test))
+    hmm.create_transition_matrix()
+    # print(hmm.classification(hmm.test))
     t1 = time.time()
 
     total = t1 - t0
