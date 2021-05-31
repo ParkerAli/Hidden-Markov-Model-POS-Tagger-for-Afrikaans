@@ -98,6 +98,8 @@ class HMM(object):
 
         return (tag_1_then_tag_2_count) #/ (tag_1_count)
 
+    
+
     def trigram(self, tag_1, tag_2, tag_3) -> float: #trigram
         """
         Calculates the probability of tag 3 appearing after tag 2 and tag 1.
@@ -123,16 +125,15 @@ class HMM(object):
             for j, tag_2 in enumerate(tags_list):
                 for k, tag_3 in enumerate(tags_list):
                     tags_transition_matrix[i, j, k] = self.trigram(tag_1=tag_1, tag_2=tag_2, tag_3 = tag_3)
-
+        print(pd.DataFrame(tags_transition_matrix).shape())
         return tags_transition_matrix #, tags_list
 
     def classification(self, pairs=None):
 
         if pairs is None:
             pairs = self.word_tag_pairs
-        c = 0
-        s_tags = 0
-        unk_tags = 0
+        hits = 0
+        offset = 0
 
         actual_list = []
         predicted_list = []
@@ -140,20 +141,17 @@ class HMM(object):
         for actual, predicted in zip(pairs, self.dp_viterbi_algorithm(*self.create_transition_matrix(),
                                                                       (tup[0] for tup in pairs))):
 
-            if actual[0] == "<s>":
-                s_tags += 1
-                continue
-            if actual[1] == "<UNK>":
-                unk_tags += 1
+            if actual[0] == "<s>" or actual[1] == "<UNK>":
+                offset += 1
                 continue
 
             actual_list.append(actual[1])
             predicted_list.append(predicted[1])
-            c += actual == predicted
+            hits += actual == predicted
 
         pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("cp2.csv")
 
-        return c / (len(pairs) - s_tags-unk_tags)
+        return hits / (len(pairs) - offset)
 
     # def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
     #     if not words:
@@ -211,6 +209,8 @@ class HMM(object):
         # last step
         prob,umax,vmax = max([(V[len(sent),u,v] * self.Q[u,v,''],u,v) for u in self.tags for v in self.tags])
         return path[umax,vmax]
+
+
 
 
     # def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
