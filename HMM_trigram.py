@@ -2,16 +2,15 @@ import numpy as np
 import pandas as pd
 from sklearn import metrics
 from collections import defaultdict, Counter
-from itertools import permutations
-
+from itertools import permutations, dropwhile
 
 class HMM(object):
 
     def __init__(self, train_filename: str,test_filename : str) -> None:
 
-        self.data, self.tags, self.word_tag_pairs = self.prepare_training(
+        self.data, self.tags, self.vocab = self.prepare_training(
             pd.read_csv(f"{train_filename}.csv", na_filter=False))  # I used windows so change \\ to /
-        self.vocab = self.get_vocab(self.word_tag_pairs)
+
         self.test = self.prepare_word_tags(pd.read_csv(f"{test_filename}.csv", na_filter=False))
 
     def prepare_word_tags(self, df):
@@ -35,39 +34,36 @@ class HMM(object):
         tags = defaultdict(set)
 
         tags['<s>'].add(0)
-        word_tag_pairs = []
+        vocab = set()
 
         # counter = Counter()
         # for row in df.itertuples(index=False):
         #     counter.update({row[0].lower() : 1})
-        #
-        # for key, count in dropwhile(lambda key_count: key_count[1] >= 1, counter.most_common()):
+        
+        # for key, count in dropwhile(lambda key_count: key_count[1] > 1, counter.most_common()):
         #     del counter[key]
+
+
 
         for i, row in enumerate(df.itertuples(index=False)):
 
             if row[0] != "NA" and row[1] != "NA":
-
+                
                 processed_df[(row[0].lower(), row[1])] += 1
                 tags[row[1]].add(i + 1)
-                word_tag_pairs.append((row[0].lower(), row[1]))
+                vocab.add(row[0])
 
             else:
 
                 processed_df[("<s>", "<s>")] += 1
-                word_tag_pairs.append(("<s>", "<s>"))
-
                 tags['<s>'].add(i + 1)
 
-
                 processed_df[("<s>", "<s>")] += 1
-                word_tag_pairs.append(("<s>", "<s>"))
-
                 tags['<s>'].add(i + 2)
 
         tags['<s>'].remove(max(tags['<s>']))
 
-        return processed_df, tags, word_tag_pairs
+        return processed_df, tags, vocab #, word_tag_pairs
 
     def get_tags(self, df) -> set:
         return {tup[1] for tup in df}
@@ -107,12 +103,10 @@ class HMM(object):
         Calculates the probability of tag 3 appearing after tag 2 and tag 1.
         Pr(t3|t2,t1) = C(t1,t2,t3)/C(t1,t2)
         """
-        # tag_1_then_tag_2_count = self.calculate_transition_probability(tag_1=tag_1, tag_2= tag_2)
-        # calculated = set()
+
         counter = 0
         for index in self.tags[tag_3]:
-            if index - 1 in self.tags[tag_2] and index - 2 in self.tags[tag_1]: #((id_1:=index - 2),(id_2:=index - 1)) not in calculated and
-                # calculated.add((id_1,id_2))
+            if index - 1 in self.tags[tag_2] and index - 2 in self.tags[tag_1]:
                 counter += 1
 
         return counter + 1 #/ (tag_1_then_tag_2_count + len(self.vocab))
@@ -125,7 +119,7 @@ class HMM(object):
         trigram = defaultdict(np.float32)
         DP_values = {}
         
-        for i,tags_pair in enumerate(permutations(tags_list,3)):
+        for tags_pair in permutations(tags_list,3):
 
             if (pair:=(tags_pair[0],tags_pair[1])) in DP_values:
 
@@ -141,16 +135,19 @@ class HMM(object):
     def classification(self, pairs=None):
 
         if pairs is None:
-            pairs = self.word_tag_pairs
+            pairs = self.test
         hits = 0
         offset = 0
 
         actual_list = []
         predicted_list = []
 
-        for actual, predicted in zip(pairs, self.dp_viterbi_algorithm(*self.create_transition_matrix(),
+        for i,actual, predicted in zip(range(1,len(pairs)-1),pairs, self.dp_viterbi_algorithm(*self.create_transition_matrix(),
                                                                       (tup[0] for tup in pairs))):
-            # print(actual,predicted)
+            
+            if i % 50 == 0:
+                print(i,"PRECISION",hits / (i - offset))
+
             if actual[0] == "<s>" or actual[1] == "<UNK>":
                 offset += 1
             else:
@@ -162,43 +159,46 @@ class HMM(object):
 
         return hits / (len(pairs) - offset)
 
-    def dp_viterbi_algorithm(self, transition_matrix, tags_list, words=None):
-        if not words:
-            words = self.word_tag_pairs
+    def dp_viterbi_algorithm(self, transition_matrix, tags_list, sentence):
+        if not sentence:
+            Exception("Sentence not found.")
 
         D = {v:i for i,v in enumerate(tags_list)}
     
-        for i, word in enumerate(words):
+        for i, word in enumerate(sentence):
     
             p_max = float('-inf')
             p_max_index = -1
-    
-            for pair in permutations(tags_list,2):
-                if i == 1:
-                    tag_prob = transition_matrix[("<s>",pair[0],pair[1])]
-                elif i == 0:
-                    tag_prob = transition_matrix[("<s>","<s>",pair[0])]
-                else:
-                    tag_prob = transition_matrix[(tags_list[p_max_index],pair[0],pair[1])]
-    
-                emission_probability = self.calculate_emmision_probability(word, pair[0])
-                state_prob = emission_probability * tag_prob
-    
-                if p_max < state_prob:
 
-                    p_max_index = D[pair[0]]
-                    p_max = state_prob
-    
-            if word != "<s>" and tags_list[p_max_index] == "<s>":
-                yield word, "<UNK>"
-            else:
+            if word in self.vocab:
+                for pair in permutations(tags_list,2):
+                    if i == 1:
+                        tag_prob = transition_matrix[("<s>",pair[0],pair[1])]
+                    elif i == 0:
+                        tag_prob = transition_matrix[("<s>","<s>",pair[0])]
+                    else:
+                        tag_prob = transition_matrix[(tags_list[p_max_index],pair[0],pair[1])]
+        
+                    emission_probability = self.calculate_emmision_probability(word, pair[0])
+                    state_prob = emission_probability * tag_prob
+        
+                    if p_max < state_prob:
+
+                        p_max_index = D[pair[0]]
+                        p_max = state_prob
+            
                 yield word, tags_list[p_max_index]
+
+            else:
+            # if word != "<s>" and tags_list[p_max_index] == "<s>":
+                yield word, "<UNK>"
+            # else:
 
 
 if __name__ == "__main__":
     hmm = HMM("train","test")
 
-    words = [
+    sentence = [
         ("laai", "VTHOG"),
         ("die", "LB"),
         ("elektroniese", "ASA"),
@@ -216,8 +216,7 @@ if __name__ == "__main__":
 
     import time
     t0 = time.time()
-    # hmm.create_transition_matrix()
-    print(hmm.classification(hmm.test))
+    print(hmm.classification())
     t1 = time.time()
 
     total = t1 - t0
