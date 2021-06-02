@@ -3,3 +3,8 @@
 *.iml
 .idea/
 .ipynb_checkpoints/HMM - Ali-checkpoint.ipynb
+brown.csv
+Brown_dev.txt
+Brown_tagged_dev.txt
+Brown_tagged_train.txt
+seong.py
