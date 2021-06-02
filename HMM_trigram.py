@@ -166,7 +166,7 @@ class HMM(object):
                 predicted_list.append(predicted[1])
                 hits += actual == predicted
 
-        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("cp2.csv")
+        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("trigram_cp.csv")
 
         return hits / (len(pairs) - offset)
 

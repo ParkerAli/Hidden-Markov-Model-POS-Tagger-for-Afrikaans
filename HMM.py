@@ -139,9 +139,7 @@ class HMM(object):
             predicted_list.append(predicted[1])
 
             c += actual == predicted
-            # with open("classification.txt","w") as f:
-            #     print(metrics.classification_report(actual_list,predicted_list),file=f)
-
+        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("bigram_cp.csv")
         return c / (len(pairs) - s_tags)
 
     def dp_viterbi_algorithm(self, matrix, tags_list, words=None):
