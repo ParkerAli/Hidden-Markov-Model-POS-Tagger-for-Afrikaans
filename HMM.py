@@ -22,7 +22,7 @@ class HMM(object):
         print(num_sent)
 
         # training vars
-        processed_df = defaultdict(int)  # the unigram counts
+        unigram_c = defaultdict(int)  # the unigram counts
         train_tags = defaultdict(set)  # tags in the training set
         train_tags['<s>'].add(0)  # add first <s> token because no NA value start the dataset
         train_word_tag_pairs = []  # stores word-tag pairs for training set
@@ -34,11 +34,11 @@ class HMM(object):
         for i, row in enumerate(df.itertuples(index=False)):
             if sent_counter in train_indices:
                 if row[0] != "NA" and row[1] != "NA":
-                    processed_df[(row[0].lower(), row[1])] += 1
+                    unigram_c[(row[0].lower(), row[1])] += 1
                     train_tags[row[1]].add(i + 1)
                     train_word_tag_pairs.append((row[0].lower(), row[1]))
                 else:
-                    processed_df[("<s>", "<s>")] += 1
+                    unigram_c[("<s>", "<s>")] += 1
                     train_word_tag_pairs.append(("<s>", "<s>"))
                     train_tags['<s>'].add(i + 1)
                     sent_counter += 1
@@ -68,7 +68,7 @@ class HMM(object):
         print(len(train_word_tag_pairs))
         print(len(val_word_tag_pairs))
 
-        return processed_df, train_tags, train_word_tag_pairs, val_word_tag_pairs, vocabulary
+        return unigram_c, train_tags, train_word_tag_pairs, val_word_tag_pairs, vocabulary
 
     def test_preprocess(self, df):
         word_tag_pairs = []
