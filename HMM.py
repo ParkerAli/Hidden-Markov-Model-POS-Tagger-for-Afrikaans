@@ -33,7 +33,7 @@ class HMM(object):
         sent_counter = 0  # counts num sentences
         for i, row in enumerate(df.itertuples(index=False)):
             if sent_counter in train_indices:
-                if row[0] != "NA" and row[1] != "NA":
+                if row[0] != "NA":
                     unigram_c[(row[0].lower(), row[1])] += 1
                     train_tags[row[1]].add(i + 1)
                     train_word_tag_pairs.append((row[0].lower(), row[1]))
