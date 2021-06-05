@@ -1,20 +1,46 @@
 import numpy as np
 import pandas as pd
 from sklearn import metrics
-from collections import defaultdict, Counter
-from itertools import permutations
+from collections import defaultdict, Counter, deque
+from itertools import permutations, dropwhile
+import unicodedata
 
+import string
+
+import os.path
+
+import pickle
+
+# puntuasie
+PUNCTUATION = {'.',',',';',':',"'",'"','$','#','@','!','?', '/', '*','&','^','-','+','(',')','[',']','{','}','\\'}
 
 class HMM(object):
 
     def __init__(self, dirname: str) -> None:
 
-        self.data, self.tags, self.word_tag_pairs, self.val, self.vocab = self.preprocess(
+        self.unigram_c, self.tags, self.train,self.val, self.vocab = self.preprocess(
             pd.read_csv(f"{dirname}\\train.csv", na_filter=False))  # I used windows so change \\ to /
         self.test = self.test_preprocess(pd.read_csv(f"{dirname}\\test.csv", na_filter=False))
 
+        
+        self.unigram = self.unigram_probability()
+        self.bigram = self.bigram_probability()
+
+        if not os.path.exists("trigram.pkl"):
+            with open("trigram.pkl","wb") as f:
+                self.trigram = self.trigram_probability()
+                pickle.dump(self.trigram,f)
+
+        else:
+             with open("trigram.pkl","rb") as f:
+                self.trigram = pickle.load(f)
+
+
     def preprocess(self, df):
         # preparing training and validation indices
+
+        df = df[~df["Token"].isin(PUNCTUATION)]
+
         np.random.seed(69)  # set random seed for sampling
         num_sent = len(df.loc[df['Token'] == "NA"])  # number of sentences
         train_indices = np.random.choice(a=num_sent, size=int(num_sent * 0.7), replace=False)  # list of training sents
@@ -25,67 +51,102 @@ class HMM(object):
         unigram_c = defaultdict(int)  # the unigram counts
         train_tags = defaultdict(set)  # tags in the training set
         train_tags['<s>'].add(0)  # add first <s> token because no NA value start the dataset
-        train_tags['<s>'].add(1)  # add second <s> token because no NA value start the dataset
+        # train_tags['<s>'].add(1)  # add second <s> token because no NA value start the dataset
         train_word_tag_pairs = []  # stores word-tag pairs for training set
         # validation var
         val_word_tag_pairs = []  # stores word-tag pairs for validation set
-
+        vocabulary = set()
         # populates training set
         sent_counter = 0  # counts num sentences
+
+        counter = Counter()
+        for row in df.itertuples(index=False):
+            counter.update({row[0].lower() : 1})
+
+        for key, count in dropwhile(lambda key_count: key_count[1] > 1, counter.most_common()):
+            del counter[key]
+
+
         for i, row in enumerate(df.itertuples(index=False)):
+            
             if sent_counter in train_indices:
-                if row[0] != "NA" and row[1] != "NA":
-                    unigram_c[(row[0].lower(), row[1])] += 1
-                    train_tags[row[1]].add(i + 1)
-                    train_word_tag_pairs.append((row[0].lower(), row[1]))
+                
+                if row[0] != "NA":
+                    word = row[0].lower()
+                    vocabulary.add(word)
+                    if word in counter:
+
+                        # vocabulary.add(word)
+                        unigram_c[(word, row[1])] += 1
+                        train_tags[row[1]].add(i)
+                        train_word_tag_pairs.append((word, row[1]))
+                    else:
+                        # vocabulary.add(word)
+                        unigram_c[(word, "<UNK>")] += 1
+                        train_tags["<UNK>"].add(i)
+                        train_word_tag_pairs.append((word, "<UNK>"))
+
                 else:
-                    unigram_c[("<s>", "<s>")] += 2
+                    # unigram_c[("</s>", "</s>")] += 1
+                    # unigram_c[("<s>", "<s>")] += 1
+                    train_word_tag_pairs.append(("</s>", "</s>"))
                     train_word_tag_pairs.append(("<s>", "<s>"))
-                    train_word_tag_pairs.append(("<s>", "<s>"))
-                    train_tags['<s>'].add(i + 1)
+
                     train_tags['<s>'].add(i + 2)
+                    train_tags['</s>'].add(i + 1)
                     sent_counter += 1
             else:
                 if row[0] == "NA" and row[1] == "NA":
                     sent_counter += 1
 
+
+        
+        train_tags['<s>'].remove(max(train_tags['<s>']))
         # initialises vocabulary from the word-tag pairs in the training set
-        vocabulary = {tup[0] for tup in train_word_tag_pairs}
+        # vocabulary = {tup[0] for tup in train_word_tag_pairs}
 
         # populates validation set
+
+
         sent_counter = 0  # reset counter for next loop
         for row in df.itertuples(index=False):
             if sent_counter not in train_indices:
-                if row[0] != "NA" and row[1] != "NA":
+                # word = row[0].lower()
+                if row[0] != "NA":
                     val_word_tag_pairs.append((row[0].lower(), row[1] if row[0].lower() in vocabulary else "<UNK>"))
                 else:
+                    val_word_tag_pairs.append(("</s>", "</s>"))
                     val_word_tag_pairs.append(("<s>", "<s>"))
-                    val_word_tag_pairs.append(("<s>", "<s>"))
+
                     sent_counter += 1
             else:
                 if row[0] == "NA" and row[1] == "NA":
                     sent_counter += 1
 
+        val_word_tag_pairs.pop()
         # the last index in the dataset is NA and we need to remove unnecessary <s> token
-        if (num_sent - 1 in train_tags):
-            train_tags['<s>'].remove(max(train_tags['<s>']))
-            train_tags['<s>'].remove(max(train_tags['<s>']))
-        print(len(train_word_tag_pairs))
+
+            # train_tags['<s>'].remove(max(train_tags['<s>']))
+        print(len(vocabulary))
         print(len(val_word_tag_pairs))
 
-        return unigram_c, train_tags, train_word_tag_pairs, val_word_tag_pairs, vocabulary
+        return unigram_c, train_tags,train_word_tag_pairs, val_word_tag_pairs, vocabulary
 
     def test_preprocess(self, df):
-        word_tag_pairs = []
+        word_tag_pairs = [("<s>", "<s>")]
+        df = df[~df["Token"].isin(PUNCTUATION)]
+
         for row in df.itertuples(index=False):
-            if row[0] != "NA" and row[1] != "NA":
-                word_tag_pairs.append((row[0].lower(), row[1] if row[0].lower() in self.vocab else "<UNK>"))
+            if row[0] != "NA":
+                word_tag_pairs.append((row[0].lower(), row[1] if row[0].lower() in self.vocab else "<UNK>" ))
             else:
+                word_tag_pairs.append(("</s>", "</s>"))
                 word_tag_pairs.append(("<s>", "<s>"))
-                word_tag_pairs.append(("<s>", "<s>"))
+        
+        word_tag_pairs.pop()
         return word_tag_pairs
 
-    def calculate_emmision_probability(self, word, tag) -> tuple:  # unigram
+    def _emission_probability(self, word, tag) -> tuple:  # unigram
         """
         Calculates Pr(word|tag)
         """
@@ -93,11 +154,11 @@ class HMM(object):
 
         if tag_count == 0:
             return 0
-        words_tag_count = self.data[(word, tag)]
-
+        words_tag_count = self.unigram_c[(word, tag)]
         return words_tag_count / tag_count
 
-    def calculate_transition_probability(self, tag_1, tag_2) -> int:  # bigram numberator
+
+    def bigram_counter(self, tag_1, tag_2) -> int:  # bigram numberator
         """
         Calculates the probability of tag 2 appearing after tag 1.
         Pr(t2|t1)
@@ -110,102 +171,189 @@ class HMM(object):
 
         return tag_1_then_tag_2_count
 
-    def trigram(self, tag_1, tag_2, tag_3) -> float:  # trigram
+    def trigram_counter(self, tag_1, tag_2, tag_3) -> float:  # trigram
         """
         Calculates the probability of tag 3 appearing after tag 2 and tag 1.
         Pr(t3|t2,t1) = C(t1,t2,t3)/C(t1,t2)
         """
-        # tag_1_then_tag_2_count = self.calculate_transition_probability(tag_1=tag_1, tag_2= tag_2)
-        # calculated = set()
+
         counter = 0
         for index in self.tags[tag_3]:
-            if index - 1 in self.tags[tag_2] and index - 2 in self.tags[tag_1]:  # ((id_1:=index - 2),(id_2:=index - 1)) not in calculated and
-                # calculated.add((id_1,id_2))
+            if index - 1 in self.tags[tag_2] and index - 2 in self.tags[tag_1]:
                 counter += 1
 
-        return counter + 1  # / (tag_1_then_tag_2_count + len(self.vocab))
+        return counter + 1
 
-    def create_transition_matrix(self) -> np.matrix:
+    def unigram_probability(self):
+        D = defaultdict(int)
+
+        for word_tag in self.unigram_c:
+            D[word_tag] = self._emission_probability(*word_tag)
+        return D
+
+    def bigram_probability(self) -> defaultdict:
+
+        bigram = defaultdict(np.float64)
+        DP_values = {}
+                
+        for tags_pair in permutations(self.tags.keys(),2):
+            # print(tags_pair)
+            if (tag := tags_pair[0]) in DP_values:
+
+                k = DP_values[tag]
+            else:
+                DP_values[tag] = k = len(self.tags[tags_pair[0]]) + len(self.vocab)
+
+            bigram[tags_pair] = (self.bigram_counter(*tags_pair)+1) / k
+
+
+        return bigram
+
+    def trigram_probability(self) -> defaultdict:
         """
         Creates a matrix of transition probabilities
         """
-        tags_list = list(self.tags.keys())
-        trigram = defaultdict(np.float32)
+        trigram = defaultdict(np.float64)
         DP_values = {}
+        # import time
 
-        for i, tags_pair in enumerate(permutations(tags_list, 3)):
+        # t0 = time.time()
 
-            if (pair := (tags_pair[0], tags_pair[1])) in DP_values:
+        for tags_pair in permutations(self.tags.keys(),3):
 
-                k = DP_values[pair]
-            else:
+            if (pair := (tags_pair[0], tags_pair[1])) not in DP_values:
+            #     k = DP_values[pair]
+            # else:
 
-                DP_values[pair] = k = self.calculate_transition_probability(*pair) + len(self.vocab)
+                DP_values[pair] = self.bigram_counter(*pair) + len(self.vocab)
 
-            trigram[tags_pair] = self.trigram(*tags_pair) / k
+            trigram[tags_pair] = self.trigram_counter(*tags_pair) / DP_values[pair]
 
-        return trigram, tags_list
+        # t1 = time.time()
 
-    def classification(self, pairs=None):
+        # print(t1 - t0,"seconds")
+        return trigram
+
+
+    def classification(self, pairs=None,filename="test"):
 
         if pairs is None:
-            pairs = self.word_tag_pairs
+            pairs = self.test
         hits = 0
-        offset = 0
+        # offset = 0
 
-        actual_list = []
-        predicted_list = []
+        with open(f"{filename}.csv","w") as output:
+            print("Token","Actual Tag","Predicted Tag",sep=",",file=output)
+            total = 1
+            loc = 0
+            sentence = deque()
+            c=0
+            for word,tag in pairs:
+                sentence.append((word,tag))
+                if tag == "</s>":
+                    sentence.popleft()
+                    sentence.pop()
+                    for actual,predicted in zip(sentence,self.dp_viterbi_algorithm(sentence)):
+                        print(actual[0],actual[1],predicted[1],sep=",",file=output)
+                        if actual[1] == predicted[1]:
+                            loc += 1
+                        if predicted[1][0] == predicted[1][0]:
+                            c +=1
 
-        for actual, predicted in zip(pairs, self.dp_viterbi_algorithm(*self.create_transition_matrix(),
-                                                                      (tup[0] for tup in pairs))):
-            # print(actual,predicted)
-            if actual[0] == "<s>" or actual[1] == "<UNK>":
-                offset += 1
-            else:
-                actual_list.append(actual[1])
-                predicted_list.append(predicted[1])
-                hits += actual == predicted
+                    # print("\nPRECISION:",loc/len(sentence))
+                    total += len(sentence)
+                    hits += loc
+                    loc = 0
+                    sentence = deque()
+
+
+        print(c/total)
+
 
         # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("trigram_cp.csv")
 
-        return hits / (len(pairs) - offset)
+        return hits / total
 
-    def dp_viterbi_algorithm(self, transition_matrix, tags_list, words=None):
-        if not words:
-            words = self.word_tag_pairs
+    def interpolation(self,word,l1,l2,tag1,tag2,tag3):
+        l3 = 1-l1-l2
 
-        D = {v: i for i, v in enumerate(tags_list)}
+        # print(word,tag3,self.unigram[(word,tag3)])
+        unigram_p = self.unigram[(word,tag3)]
+        bigram_p = self.bigram[(tag2, tag3)]
+        trigram_p = self.trigram[(tag1, tag2, tag3)]
+        return l1*unigram_p + l2*bigram_p + l3*trigram_p
 
-        for i, word in enumerate(words):
+    def dp_viterbi_algorithm(self, sentence):
+        if not sentence:
+            Exception("Sentence not found.")
+        tags_list = self.tags.keys() #- set(["</s>"])
+
+        l1 = 0
+        l2 = 0.6
+
+        p_max_tag = "<UNK>"
+        for i,(word,_) in enumerate(sentence):
 
             p_max = float('-inf')
-            p_max_index = -1
+            if word not in self.vocab:
+                p_max_tag = "<UNK>"
+            for tag_1,tag_2 in permutations(tags_list, 2):
 
-            for pair in permutations(tags_list, 2):
-                if i == 1:
-                    tag_prob = transition_matrix[("<s>", pair[0], pair[1])]
+                if i > 1:
+                    tag_prob = self.interpolation(word,l1,l2,p_max_tag, tag_1,tag_2)
+                elif i == 1:
+                    tag_prob = self.interpolation(word,l1,l2,"<s>", tag_1,tag_2)
                 elif i == 0:
-                    tag_prob = transition_matrix[("<s>", "<s>", pair[0])]
-                else:
-                    tag_prob = transition_matrix[(tags_list[p_max_index], pair[0], pair[1])]
+                    tag_prob = self.interpolation(word,l1,l2,"</s>", "<s>",tag_1)
 
-                emission_probability = self.calculate_emmision_probability(word, pair[0])
+
+                emission_probability = self.unigram[(word, tag_1)]
                 state_prob = emission_probability * tag_prob
-
                 if p_max < state_prob:
-                    p_max_index = D[pair[0]]
+                    p_max_tag = tag_1
                     p_max = state_prob
 
-            if word != "<s>" and tags_list[p_max_index] == "<s>":
+            yield word, p_max_tag
+
+
+    def dp_viterbi_algorithm_bigram(self, transition_matrix, sentence=None):
+        if not sentence:
+            Exception("Sentence not found.")
+
+        tags_list = self.tags.keys() - set(["</s>"])
+
+        p_max_tag = "<s>"
+        for i,(word,_) in enumerate(sentence):
+
+            p_max = float('-inf')
+            if word not in self.vocab:
+                
+                for tag in tags_list:
+                    
+                    p_max_running = self.bigram[(tag,p_max_tag)]#self.interpolation(l1,l2,tag,prior_tags[-1] ,prior_tags[-2])
+                    if p_max_running> p_max:
+                        p_max_tag = tag
+                        p_max = p_max_running 
+
                 yield word, "<UNK>"
             else:
-                yield word, tags_list[p_max_index]
+                for tag_1 in tags_list:
+
+                    tag_prob = transition_matrix[(p_max_tag, tag_1)]
+                    emission_probability = self.unigram[(word, tag_1)]
+                    state_prob = emission_probability * tag_prob
+                    if p_max < state_prob:
+                        p_max_tag = tag_1
+                        p_max = state_prob
+            
+                yield word, p_max_tag
+
 
 
 if __name__ == "__main__":
     hmm = HMM("AfrikaansPOSData")
 
-    words = [
+    sentence = [
         ("laai", "VTHOG"),
         ("die", "LB"),
         ("elektroniese", "ASA"),
@@ -224,10 +372,17 @@ if __name__ == "__main__":
     import time
 
     t0 = time.time()
-    # hmm.create_transition_matrix()
-    print(hmm.classification(hmm.test))
-    print(hmm.classification(hmm.val))
-    t1 = time.time()
+    print(hmm.classification(hmm.train,"training"))
 
-    total = t1 - t0
-    print(total, "seconds")
+    print(f"Training runtime = {time.time()-t0} seconds")
+
+    # t0 = time.time()
+
+    # print(hmm.classification(hmm.test,"testing"))
+    # print(f"Testing runtime = {time.time()-t0} seconds")
+
+    # t0 = time.time()
+
+    # print(hmm.classification(hmm.val,"validation"))
+    # print(f"Validation runtime = {time.time()-t0} seconds")
+
