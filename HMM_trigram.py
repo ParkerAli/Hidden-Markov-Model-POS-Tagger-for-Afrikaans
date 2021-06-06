@@ -11,16 +11,17 @@ import os.path
 
 import pickle
 
-# puntuasie
+# Punktuasie
 PUNCTUATION = {'.', ',', ';', ':', "'", '"', '$', '#', '@', '!', '?', '/', '*', '&', '^', '-', '+', '(', ')', '[', ']',
                '{', '}', '\\'}
+
 
 class HMM(object):
 
     def __init__(self, dirname: str) -> None:
 
         self.unigram_c, self.tags, self.train,self.val, self.vocab = self.preprocess(
-            pd.read_csv(f"{dirname}\\train.csv", na_filter=False))  # I used windows so change \\ to /
+            pd.read_csv(f"{dirname}\\train.csv", na_filter=False), 0.7)  # I used windows so change \\ to /
         self.test = self.test_preprocess(pd.read_csv(f"{dirname}\\test.csv", na_filter=False))
 
         
@@ -38,10 +39,11 @@ class HMM(object):
                 self.trigram = pickle.load(f)
 
 
-    def preprocess(self, df):
+    def preprocess(self, df, training_proportion):
         """
         Splits the training data and prepares the training and validation sets
         :param df: The training dataframe
+        :param training_proportion: The training training set proportions
         :return: The unigram counts, the tags in the training data, word-tag pairs for the training data, the word-tag
         pairs for the validation data and the vocabulary
         """
@@ -50,7 +52,7 @@ class HMM(object):
 
         np.random.seed(69)  # set random seed for sampling
         num_sent = len(df.loc[df['Token'] == "NA"])  # number of sentences
-        train_indices = np.random.choice(a=num_sent, size=int(num_sent * 0.7), replace=False)  # list of training sents
+        train_indices = np.random.choice(a=num_sent, size=int(num_sent * training_proportion), replace=False)  # list of training sents
         print(len(train_indices))
         print(num_sent)
 
@@ -158,7 +160,7 @@ class HMM(object):
         word_tag_pairs.pop()
         return word_tag_pairs
 
-    def _emission_probability(self, word, tag) -> tuple:  # unigram
+    def _emission_probability(self, word, tag) -> float:  # unigram
         """
         Calculates Pr(word|tag)
         :param word: a word
