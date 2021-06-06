@@ -12,7 +12,8 @@ import os.path
 import pickle
 
 # puntuasie
-PUNCTUATION = {'.',',',';',':',"'",'"','$','#','@','!','?', '/', '*','&','^','-','+','(',')','[',']','{','}','\\'}
+PUNCTUATION = {'.', ',', ';', ':', "'", '"', '$', '#', '@', '!', '?', '/', '*', '&', '^', '-', '+', '(', ')', '[', ']',
+               '{', '}', '\\'}
 
 class HMM(object):
 
@@ -26,6 +27,7 @@ class HMM(object):
         self.unigram = self.unigram_probability()
         self.bigram = self.bigram_probability()
 
+        # We store the trigram probabilities using pickle to save runtime
         if not os.path.exists("trigram.pkl"):
             with open("trigram.pkl","wb") as f:
                 self.trigram = self.trigram_probability()
@@ -37,8 +39,13 @@ class HMM(object):
 
 
     def preprocess(self, df):
+        """
+        Splits the training data and prepares the training and validation sets
+        :param df: The training dataframe
+        :return: The unigram counts, the tags in the training data, word-tag pairs for the training data, the word-tag
+        pairs for the validation data and the vocabulary
+        """
         # preparing training and validation indices
-
         df = df[~df["Token"].isin(PUNCTUATION)]
 
         np.random.seed(69)  # set random seed for sampling
@@ -133,6 +140,11 @@ class HMM(object):
         return unigram_c, train_tags,train_word_tag_pairs, val_word_tag_pairs, vocabulary
 
     def test_preprocess(self, df):
+        """
+        Transforms the test data into the correct format for tagging
+        :param df: Test dataframe
+        :return: word-tag
+        """
         word_tag_pairs = [("<s>", "<s>")]
         df = df[~df["Token"].isin(PUNCTUATION)]
 
@@ -149,6 +161,9 @@ class HMM(object):
     def _emission_probability(self, word, tag) -> tuple:  # unigram
         """
         Calculates Pr(word|tag)
+        :param word: a word
+        :param tag: a tag
+        :return: Pr(word|tag)
         """
         tag_count = len(self.tags[tag])
 
@@ -160,8 +175,10 @@ class HMM(object):
 
     def bigram_counter(self, tag_1, tag_2) -> int:  # bigram numberator
         """
-        Calculates the probability of tag 2 appearing after tag 1.
-        Pr(t2|t1)
+        Calculates the bigram count for 2 tags
+        :param tag_1: The first tag
+        :param tag_2: The second tag
+        :return: bigram count for the two tags
         """
         tag_1_then_tag_2_count = 0
 
@@ -173,10 +190,14 @@ class HMM(object):
 
     def trigram_counter(self, tag_1, tag_2, tag_3) -> float:  # trigram
         """
+        Calculates the trigram count for 3 tags
         Calculates the probability of tag 3 appearing after tag 2 and tag 1.
-        Pr(t3|t2,t1) = C(t1,t2,t3)/C(t1,t2)
+        Pr(t3|t2,t1) = C(tag1,tag2,tag3)/C(tag1,tag2)
+        :param tag_1: the first tag
+        :param tag_2: the second tag
+        :param tag_3: the third tag
+        :return:
         """
-
         counter = 0
         for index in self.tags[tag_3]:
             if index - 1 in self.tags[tag_2] and index - 2 in self.tags[tag_1]:
@@ -185,6 +206,10 @@ class HMM(object):
         return counter + 1
 
     def unigram_probability(self):
+        """
+        Calculates the matrix of unigram (emission) probabilities for the training data
+        :return: unigram probability matrix
+        """
         D = defaultdict(int)
 
         for word_tag in self.unigram_c:
@@ -192,7 +217,10 @@ class HMM(object):
         return D
 
     def bigram_probability(self) -> defaultdict:
-
+        """
+        Calculates the matrix of bigram probabilities for the training data
+        :return: bigram probability matrix
+        """
         bigram = defaultdict(np.float64)
         DP_values = {}
                 
@@ -211,7 +239,10 @@ class HMM(object):
 
     def trigram_probability(self) -> defaultdict:
         """
-        Creates a matrix of transition probabilities
+        Calculates the matrix of trigram probabilities for the training data with the following rule
+        Pr(t3|t2,t1) = C(tag1,tag2,tag3)/C(tag1,tag2)
+
+        :return: trigram probability matrix
         """
         trigram = defaultdict(np.float64)
         DP_values = {}
@@ -236,7 +267,13 @@ class HMM(object):
 
 
     def classification(self, pairs=None,filename="test"):
-
+        """
+        Tags and classifies the parameterised data using the Viterbi function, writes the output to a csv file,
+        and produces a classification report
+        :param pairs: word tag pairs for the training data
+        :param filename: name of the file to write the tagging results to
+        :return: tagging precision
+        """
         if pairs is None:
             pairs = self.test
         hits = 0
@@ -275,15 +312,32 @@ class HMM(object):
         return hits / total
 
     def interpolation(self,word,l1,l2,tag1,tag2,tag3):
+        """
+        Linearly interpolates predictions from on the unigram, bigram and trigram probability matrices by assigning
+        weights to the probability from each respective probability matrix
+        :param word:
+        :param l1: weight for the unigram probability
+        :param l2: weight for the bigram probability
+        :param tag1: the first tag
+        :param tag2: the second tag
+        :param tag3: the third tag
+        :return: linear interpolation of the unigram, bigram and trigram probabilities
+        """
         l3 = 1-l1-l2
 
         # print(word,tag3,self.unigram[(word,tag3)])
-        unigram_p = self.unigram[(word,tag3)]
-        bigram_p = self.bigram[(tag2, tag3)]
-        trigram_p = self.trigram[(tag1, tag2, tag3)]
+        unigram_p = self.unigram[(word,tag3)]  # unigram prediction
+        bigram_p = self.bigram[(tag2, tag3)]  # bigram prediction
+        trigram_p = self.trigram[(tag1, tag2, tag3)]  # trigram prediction
         return l1*unigram_p + l2*bigram_p + l3*trigram_p
 
     def dp_viterbi_algorithm(self, sentence):
+        """
+        Produces a tag prediction for a word by implementing the Viterbi algorithm using the linearly interpolated
+        probabilities from the interpolation() function.
+        :param sentence: sentence to be tagged
+        :return: words and their corresponding tags
+        """
         if not sentence:
             Exception("Sentence not found.")
         tags_list = self.tags.keys() #- set(["</s>"])
@@ -317,6 +371,12 @@ class HMM(object):
 
 
     def dp_viterbi_algorithm_bigram(self, transition_matrix, sentence=None):
+        """
+        Produces a tag prediction by implementing the Viterbi algorithm using the bigram probabilities
+        :param transition_matrix: the matrix of bigram probabilities
+        :param sentence: sentence to be tagged
+        :return: words and their corresponding tags
+        """
         if not sentence:
             Exception("Sentence not found.")
 
