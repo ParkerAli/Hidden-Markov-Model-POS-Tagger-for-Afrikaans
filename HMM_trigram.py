@@ -191,8 +191,6 @@ class HMM(object):
     def trigram_counter(self, tag_1, tag_2, tag_3) -> float:  # trigram
         """
         Calculates the trigram count for 3 tags
-        Calculates the probability of tag 3 appearing after tag 2 and tag 1.
-        Pr(t3|t2,t1) = C(tag1,tag2,tag3)/C(tag1,tag2)
         :param tag_1: the first tag
         :param tag_2: the second tag
         :param tag_3: the third tag
@@ -207,7 +205,7 @@ class HMM(object):
 
     def unigram_probability(self):
         """
-        Calculates the matrix of unigram (emission) probabilities for the training data
+        Calculates the matrix of unigram (emission) probabilities for the training data using Pr(tag) = Pr(word|tag)
         :return: unigram probability matrix
         """
         D = defaultdict(int)
@@ -218,7 +216,7 @@ class HMM(object):
 
     def bigram_probability(self) -> defaultdict:
         """
-        Calculates the matrix of bigram probabilities for the training data
+        Calculates the matrix of bigram probabilities for the training data using Pr(tag2|tag1) = C(tag1,tag2)/C(tag1)
         :return: bigram probability matrix
         """
         bigram = defaultdict(np.float64)
@@ -239,8 +237,8 @@ class HMM(object):
 
     def trigram_probability(self) -> defaultdict:
         """
-        Calculates the matrix of trigram probabilities for the training data with the following rule
-        Pr(t3|t2,t1) = C(tag1,tag2,tag3)/C(tag1,tag2)
+        Calculates the matrix of trigram probabilities for the training data using
+        Pr(tag3|tag2,tag1) = C(tag1,tag2,tag3)/C(tag1,tag2)
 
         :return: trigram probability matrix
         """
