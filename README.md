@@ -17,8 +17,8 @@ pip install -r requirements.txt # to install the required packages for running H
 ### Windows
 ````powershell
 pip install virtualenv # if you don't already have virtualenv installed
-virtualenv venv # to create your new environment (called 'venv' here)
-source .\venv\bin\Scripts\activate # to enter the virtual environment
+python -m venv venv # to create your new environment (called 'venv' here)
+.\venv\Scripts\activate # to enter the virtual environment
 pip install -r requirements.txt # to install the required packages for running HMM.py
 ````
 
