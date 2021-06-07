@@ -13,6 +13,7 @@ warnings.filterwarnings('ignore')
 PUNCTUATION = {'.', ',', ';', ':', "'", '"', '$', '#', '@', '!', '?', '/', '*', '&', '^', '-', '+', '(', ')', '[', ']',
                '{', '}', '\\'}
 
+OUTPUT_DIRECTORY = "output"
 
 class HMM(object):
 
@@ -426,12 +427,12 @@ if __name__ == "__main__":
     print("Running baseline model...")
     t1 = time.time()
     print("Evaluating Validation set")
-    hmm.classification(hmm.val, filename="val_base")
+    hmm.classification(hmm.val, filename=f"{OUTPUT_DIRECTORY}\\val_base")
     print(f"Validation evaluation runtime: {round(time.time() - t1, 5)} seconds\n")
 
     t2 = time.time()
     print("Evaluating Test set")
-    hmm.classification(hmm.test, filename="test_base")
+    hmm.classification(hmm.test, filename=f"{OUTPUT_DIRECTORY}\\test_base")
     print(f"Test evaluation runtime: {round(time.time() - t2, 5)} seconds\n")
 
     ## Linear Interpolation Gridsearch
@@ -448,12 +449,12 @@ if __name__ == "__main__":
     t4 = time.time()
     hmm.set_baseline(False)
     print("Evaluating Validation set")
-    hmm.classification(hmm.val, filename="val_advanced")
+    hmm.classification(hmm.val, filename=f"{OUTPUT_DIRECTORY}\\val_advanced")
     print(f"Validation evaluation runtime: {round(time.time() - t4, 5)} seconds\n")
 
     t5 = time.time()
     print("Evaluating Test set")
-    hmm.classification(hmm.test, filename="test_advanced")
+    hmm.classification(hmm.test, filename=f"{OUTPUT_DIRECTORY}\\test_advanced")
     print(f"Test evaluation runtime: {round(time.time() - t5, 5)} seconds\n")
 
 
