@@ -4,10 +4,11 @@ from sklearn import metrics
 from collections import defaultdict, Counter, deque
 from itertools import permutations, dropwhile
 import time
-
 import os.path
-
 import pickle
+from joblib import Parallel, delayed
+import warnings
+warnings.filterwarnings('ignore')
 
 # Punktuasie
 PUNCTUATION = {'.', ',', ';', ':', "'", '"', '$', '#', '@', '!', '?', '/', '*', '&', '^', '-', '+', '(', ')', '[', ']',
@@ -22,9 +23,6 @@ class HMM(object):
             pd.read_csv(f"{dirname}\\train.csv", na_filter=False), 0.7)  # I used windows so change \\ to /
         self.test = self.test_preprocess(pd.read_csv(f"{dirname}\\test.csv", na_filter=False))
         self.baseline = baseline
-
-
-    def train(self):
         self.unigram = self.unigram_probability()
         self.bigram = self.bigram_probability()
 
@@ -37,6 +35,10 @@ class HMM(object):
         else:
              with open("trigram.pkl","rb") as f:
                 self.trigram = pickle.load(f)
+
+
+    # def train(self):
+
 
     def preprocess(self, df, training_proportion):
         """
@@ -124,7 +126,7 @@ class HMM(object):
 
         train_tags['<s>'].remove(max(train_tags['<s>']))
         print(f"The number of sentences in the training set is {len(train_indices)}")
-        print(num_sent)
+        print(f"The number of sentences in the validation set is {num_sent-len(train_indices)}")
         print(f"The vocabulary size is {len(vocabulary)}")
 
         return unigram_c, train_tags,train_word_tag_pairs, val_word_tag_pairs, vocabulary
@@ -234,7 +236,62 @@ class HMM(object):
         return trigram
 
 
-    def classification(self, pairs=None,filename="test", l1=0,l2=1):
+    # def classification(self, pairs=None,filename="test", l1=0,l2=1):
+    #     """
+    #     Tags and classifies the parameterised data using the Viterbi function, writes the output to a csv file,
+    #     and produces a classification report
+    #     :param pairs: word tag pairs for the training data
+    #     :param filename: name of the file to write the tagging results to
+    #     :param l1: weight for the unigram probability
+    #     :param l2: weight for the bigram probability
+    #     :return: tagging precision
+    #     """
+    #     if pairs is None:
+    #         pairs = self.test
+    #     hits = 0
+    #     tags_list = sorted(list(self.tags.keys() - {"</s>", "<s>"}))
+    #
+    #     token_list = []
+    #     actual_list = []
+    #     predicted_list = []
+    #     with open(f"{filename}.csv","w") as output:
+    #         print("Token", "Actual Tag", "Predicted Tag",sep=",", file=output)
+    #         total = 1
+    #         loc = 0
+    #         sentence = deque()
+    #         c = 0
+    #         for word,tag in pairs:
+    #             sentence.append((word,tag))
+    #             if tag == "</s>":
+    #                 sentence.popleft()
+    #                 sentence.pop()
+    #                 if self.baseline:
+    #                     for actual, predicted in zip(sentence, self.dp_viterbi_algorithm_bigram(sentence, tags_list)):
+    #                         print(actual[0],actual[1],predicted[1],sep=",",file=output)
+    #                         if actual[1] == predicted[1]:
+    #                             loc += 1
+    #                         if predicted[1][0] == predicted[1][0]:
+    #                             c +=1
+    #                 else:
+    #                     for actual,predicted in zip(sentence,self.dp_viterbi_algorithm(sentence, l1,l2, tags_list)):
+    #                         print(actual[0], actual[1], predicted[1], sep=",", file=output)
+    #                         if actual[1] == predicted[1]:
+    #                             loc += 1
+    #                         if predicted[1][0] == predicted[1][0]:
+    #                             c += 1
+    #
+    #                 # print("\nPRECISION:",loc/len(sentence))
+    #                 total += len(sentence)
+    #                 hits += loc
+    #                 loc = 0
+    #                 sentence.clear()
+    #
+    #     print(c/total)
+    #     # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("trigram_cp.csv")
+    #
+    #     return hits / total
+
+    def classification(self, pairs=None, filename="test", l1=0, l2=1):
         """
         Tags and classifies the parameterised data using the Viterbi function, writes the output to a csv file,
         and produces a classification report
@@ -246,51 +303,55 @@ class HMM(object):
         """
         if pairs is None:
             pairs = self.test
-        hits = 0
         tags_list = sorted(list(self.tags.keys() - {"</s>", "<s>"}))
 
+        token_list = []
         actual_list = []
         predicted_list = []
-        with open(f"{filename}.csv","w") as output:
-            print("Token", "Actual Tag", "Predicted Tag",sep=",", file=output)
-            total = 1
-            loc = 0
-            sentence = deque()
-            c = 0
-            for word,tag in pairs:
-                sentence.append((word,tag))
-                if tag == "</s>":
-                    sentence.popleft()
-                    sentence.pop()
-                    if self.baseline:
-                        for actual, predicted in zip(sentence, self.dp_viterbi_algorithm_bigram(sentence, tags_list)):
-                            print(actual[0],actual[1],predicted[1],sep=",",file=output)
-                            if actual[1] == predicted[1]:
-                                loc += 1
-                            if predicted[1][0] == predicted[1][0]:
-                                c +=1
-                    else:
-                        for actual,predicted in zip(sentence,self.dp_viterbi_algorithm(sentence, l1,l2, tags_list)):
-                            print(actual[0], actual[1], predicted[1], sep=",", file=output)
-                            if actual[1] == predicted[1]:
-                                loc += 1
-                            if predicted[1][0] == predicted[1][0]:
-                                c += 1
 
-                    # print("\nPRECISION:",loc/len(sentence))
-                    total += len(sentence)
-                    hits += loc
-                    loc = 0
-                    sentence.clear()
+        hits = 0
+        total = 0
+        hits_less_tags = 0
 
+        sentence = deque()
+        for word, tag in pairs:
+            sentence.append((word, tag))
+            if tag == "</s>":
+                sentence.popleft()
+                sentence.pop()
+                if self.baseline:
+                    for actual, predicted in zip(sentence, self.dp_viterbi_algorithm_bigram(sentence, tags_list)):
+                        token_list.append(actual[0])
+                        actual_list.append(actual[1])
+                        predicted_list.append(predicted[1])
+                        if (actual[1] == predicted[1]):
+                            hits+=1
+                        if (actual[1][0] == predicted[1][0]):
+                            hits_less_tags+=1
+                else:
+                    for actual, predicted in zip(sentence, self.dp_viterbi_algorithm(sentence, l1, l2, tags_list)):
+                        token_list.append(actual[0])
+                        actual_list.append(actual[1])
+                        predicted_list.append(predicted[1])
+                        if (actual[1] == predicted[1]):
+                            hits+=1
+                        if (actual[1][0] == predicted[1][0]):
+                            hits_less_tags+=1
 
-        print(c/total)
+                total += len(sentence)
 
+                sentence.clear()
 
-        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("trigram_cp.csv")
+        print(f"Precision: {hits / total}")
+        print(f"Reduced (14) tag precision: {hits_less_tags / total}\n")
+
+        pd.DataFrame({"Tokens": token_list, "Actual": actual_list, "Predicted": predicted_list}).to_csv(f"{filename}.csv", index=False)
+
+        # Provides classification reports. Commented out to prevent significantly slower runtime
+        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_CP.csv")
+        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_reduced_tags_CP.csv")
 
         return hits / total
-
     def interpolation(self,word,l1,l2,tag1,tag2,tag3):
         """
         Linearly interpolates predictions from on the unigram, bigram and trigram probability matrices by assigning
@@ -317,20 +378,56 @@ class HMM(object):
         :return: optimal values for lambda_1 and lambda_2
         """
         # parameter grid
-        l1_grid = np.arange(0, 1.5, 0.5)
-        l2_grid = np.arange(0, 1.5, 0.5)
+        l1_grid = np.arange(0, 1.1, 0.1)
+        l2_grid = np.arange(0, 1.1, 0.1)
         l1_max = l2_max = cmax = 0
 
+        run=1
         for i in l1_grid:
             for j in l2_grid:
-                if i+j < 1:
-                    current = self.classification(self.test, l1=i, l2=j)
+                print(f"Run {run}")
+                run += 1
+                if i+j <= 1:
+                    current = self.classification(self.val, l1=i, l2=j)
                     if current > cmax:
                         l1_max = i
                         l2_max = j
                         cmax = current
-                        print("Max Precision = ",cmax, "l1 = ", l1_max, "l2 = ", l2_max)
+                        print(f"New Max Precision = {cmax}, l1 =  {l1_max}, l2 = , {l2_max}\n")
         return l1_max, l2_max
+
+    # def interpolation_gridsearch(self):
+    #     """
+    #     Iterates the classification function over a grid of parameter values for lambda_1 and lambda_2 and returns the
+    #     values which maximise classification accuracy
+    #     :return: optimal values for lambda_1 and lambda_2
+    #     """
+    #     # parameter grid
+    #     l1_grid = range(0, 11, 1)
+    #     l2_grid = range(0, 11, 1)
+    #     # l1_max = l2_max = cmax = 0
+    #     # run=1
+    #     def loops(l1, l2):
+    #         run = 1
+    #         l1_max = l2_max = cmax = 0
+    #         for i in l1:
+    #             for j in l2:
+    #                 a=i/10
+    #                 b=j/10
+    #                 print(f"Run {run}")
+    #                 run += 1
+    #                 if a+b < 1:
+    #                     current = self.classification(self.val, l1=a, l2=b)
+    #                     if current > cmax:
+    #                         l1_max = i
+    #                         l2_max = b
+    #                         cmax = current
+    #                         print(f"New Max Precision = {cmax}, l1 =  {l1_max}, l2 = , {l2_max}\n")
+    #         return l1_max, l2_max
+    #
+    #     Parallel(n_jobs=-1, verbose=32)(delayed(loops)(l1_grid, l2_grid) for l1_grid in l1_grid for l2_grid in l2_grid)
+    #     # return l1_max, l2_max
+
 
     def dp_viterbi_algorithm(self, sentence, l1,l2, tags_list):
         """
@@ -389,14 +486,31 @@ class HMM(object):
 
 
 if __name__ == "__main__":
+    ## Data Processing
+    # If trigram.pkl already in directory this will run significantly faster
     t0 = time.time()
-    hmm = HMM("AfrikaansPOSData", baseline=False)
-    print(f"Data Processing and Training:")
-    print(hmm.classification(hmm.val,"test"))
+    hmm = HMM("AfrikaansPOSData", baseline=True)
 
-    # if hmm.baseline:
-    #     hmm.interpolation_gridsearch()
-    #     print(hmm.classification(hmm.val, "test", hmm.interpolation_gridsearch()))
+    ## Training
+
+    ## Baseline Model
+    # hmm.classification(hmm.val, filename="val_base.csv")
+    # hmm.classification(hmm.test, filename="test_base.csv")
+
+    ## Linear Interpolation Gridesearch
+    hmm.baseline = False
+    hmm.interpolation_gridsearch()
+    # print(hmm.classification(hmm.val, "test", hmm.interpolation_gridsearch()))
+
+    ## Linearly interpolated uni/bi/trigram model
+    # print(f"Data Processing and Training:")
+    # print(hmm.classification(hmm.val,"test"))
+    # hmm.baseline = False
+    # hmm.classification(hmm.val, filename="val_improved.csv")
+    # hmm.classification(hmm.test, filename="test_improved.csv")
+
+
+
     print(f"Training runtime = {time.time()-t0} seconds")
 
 
