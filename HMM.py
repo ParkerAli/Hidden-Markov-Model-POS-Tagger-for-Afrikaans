@@ -388,10 +388,10 @@ class HMM(object):
 
     def dp_viterbi_algorithm_bigram(self, words, tags_list):
         """
-
-        :param words:
-        :param tags_list:
-        :return:
+        Produces a tag prediction for a word by implementing the Viterbi algorithm using the bigram
+        probabilities
+        :param sentence: sentence to be tagged
+        :return: words and their corresponding tags
         """
 
         for i, (word,_) in enumerate(words):
