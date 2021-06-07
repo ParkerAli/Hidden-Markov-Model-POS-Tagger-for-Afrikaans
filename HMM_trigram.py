@@ -6,7 +6,6 @@ from itertools import permutations, dropwhile
 import time
 import os.path
 import pickle
-from joblib import Parallel, delayed
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -36,9 +35,12 @@ class HMM(object):
              with open("trigram.pkl","rb") as f:
                 self.trigram = pickle.load(f)
 
-
-    # def train(self):
-
+    def set_baseline(self,new_baseline):
+        """
+        Mutator method for baseline variable
+        :param new_baseline: new baseline
+        """
+        self.baseline = new_baseline
 
     def preprocess(self, df, training_proportion):
         """
@@ -56,18 +58,18 @@ class HMM(object):
         train_indices = np.random.choice(a=num_sent, size=int(num_sent * training_proportion), replace=False)  # list of training sents
 
 
-        # training vars
+        # training set
         unigram_c = defaultdict(int)  # the unigram counts
         train_tags = defaultdict(set)  # tags in the training set
         train_tags['<s>'].add(0)  # add first <s> token because no NA value start the dataset
-        # train_tags['<s>'].add(1)  # add second <s> token because no NA value start the dataset
         train_word_tag_pairs = []  # stores word-tag pairs for training set
-        # validation var
-        val_word_tag_pairs = []  # stores word-tag pairs for validation set
         vocabulary = set()
+
+        # validation set
+        val_word_tag_pairs = []  # stores word-tag pairs for validation set
+
         # populates training set
         sent_counter = 0  # counts num sentences
-
         counter = Counter()
         for row in df.itertuples(index=False):
             counter.update({row[0].lower() : 1})
@@ -109,7 +111,6 @@ class HMM(object):
         sent_counter = 0  # reset counter for next loop
         for row in df.itertuples(index=False):
             if sent_counter not in train_indices:
-                # word = row[0].lower()
                 if row[0] != "NA":
                     val_word_tag_pairs.append((row[0].lower(), row[1] if row[0].lower() in vocabulary else "<UNK>"))
                 else:
@@ -125,6 +126,7 @@ class HMM(object):
         # the last index in the dataset is NA and we need to remove unnecessary <s> token
 
         train_tags['<s>'].remove(max(train_tags['<s>']))
+        print("Data processing complete.")
         print(f"The number of sentences in the training set is {len(train_indices)}")
         print(f"The number of sentences in the validation set is {num_sent-len(train_indices)}")
         print(f"The vocabulary size is {len(vocabulary)}")
@@ -235,63 +237,7 @@ class HMM(object):
             trigram[tags_pair] = self.trigram_counter(*tags_pair) / DP_values[pair]
         return trigram
 
-
-    # def classification(self, pairs=None,filename="test", l1=0,l2=1):
-    #     """
-    #     Tags and classifies the parameterised data using the Viterbi function, writes the output to a csv file,
-    #     and produces a classification report
-    #     :param pairs: word tag pairs for the training data
-    #     :param filename: name of the file to write the tagging results to
-    #     :param l1: weight for the unigram probability
-    #     :param l2: weight for the bigram probability
-    #     :return: tagging precision
-    #     """
-    #     if pairs is None:
-    #         pairs = self.test
-    #     hits = 0
-    #     tags_list = sorted(list(self.tags.keys() - {"</s>", "<s>"}))
-    #
-    #     token_list = []
-    #     actual_list = []
-    #     predicted_list = []
-    #     with open(f"{filename}.csv","w") as output:
-    #         print("Token", "Actual Tag", "Predicted Tag",sep=",", file=output)
-    #         total = 1
-    #         loc = 0
-    #         sentence = deque()
-    #         c = 0
-    #         for word,tag in pairs:
-    #             sentence.append((word,tag))
-    #             if tag == "</s>":
-    #                 sentence.popleft()
-    #                 sentence.pop()
-    #                 if self.baseline:
-    #                     for actual, predicted in zip(sentence, self.dp_viterbi_algorithm_bigram(sentence, tags_list)):
-    #                         print(actual[0],actual[1],predicted[1],sep=",",file=output)
-    #                         if actual[1] == predicted[1]:
-    #                             loc += 1
-    #                         if predicted[1][0] == predicted[1][0]:
-    #                             c +=1
-    #                 else:
-    #                     for actual,predicted in zip(sentence,self.dp_viterbi_algorithm(sentence, l1,l2, tags_list)):
-    #                         print(actual[0], actual[1], predicted[1], sep=",", file=output)
-    #                         if actual[1] == predicted[1]:
-    #                             loc += 1
-    #                         if predicted[1][0] == predicted[1][0]:
-    #                             c += 1
-    #
-    #                 # print("\nPRECISION:",loc/len(sentence))
-    #                 total += len(sentence)
-    #                 hits += loc
-    #                 loc = 0
-    #                 sentence.clear()
-    #
-    #     print(c/total)
-    #     # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv("trigram_cp.csv")
-    #
-    #     return hits / total
-
-    def classification(self, pairs=None, filename="test", l1=0, l2=1):
+    def classification(self, pairs=None, filename="test", l1=0, l2=0.9):
         """
         Tags and classifies the parameterised data using the Viterbi function, writes the output to a csv file,
         and produces a classification report
@@ -343,13 +289,22 @@ class HMM(object):
                 sentence.clear()
 
         print(f"Precision: {hits / total}")
-        print(f"Reduced (14) tag precision: {hits_less_tags / total}\n")
+        print(f"Reduced (14) tag precision: {hits_less_tags / total}")
 
         pd.DataFrame({"Tokens": token_list, "Actual": actual_list, "Predicted": predicted_list}).to_csv(f"{filename}.csv", index=False)
 
         # Provides classification reports. Commented out to prevent significantly slower runtime
-        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_CP.csv")
-        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_reduced_tags_CP.csv")
+        pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_CP.csv")
+        actual_reduced = []
+        predicted_reduced = []
+        for i in range(len(actual_list)):
+            if actual_list[i] == "<UNK>":
+                actual_reduced.append("<UNK>")
+                predicted_reduced.append("<UNK>")
+            else:
+                actual_reduced.append(actual_list[i][0])
+                predicted_reduced.append(predicted_list[i][0])
+        pd.DataFrame(metrics.classification_report(actual_reduced, predicted_reduced, output_dict=True)).transpose().to_csv(f"{filename}_reduced_tags_CP.csv")
 
         return hits / total
     def interpolation(self,word,l1,l2,tag1,tag2,tag3):
@@ -396,38 +351,6 @@ class HMM(object):
                         print(f"New Max Precision = {cmax}, l1 =  {l1_max}, l2 = , {l2_max}\n")
         return l1_max, l2_max
 
-    # def interpolation_gridsearch(self):
-    #     """
-    #     Iterates the classification function over a grid of parameter values for lambda_1 and lambda_2 and returns the
-    #     values which maximise classification accuracy
-    #     :return: optimal values for lambda_1 and lambda_2
-    #     """
-    #     # parameter grid
-    #     l1_grid = range(0, 11, 1)
-    #     l2_grid = range(0, 11, 1)
-    #     # l1_max = l2_max = cmax = 0
-    #     # run=1
-    #     def loops(l1, l2):
-    #         run = 1
-    #         l1_max = l2_max = cmax = 0
-    #         for i in l1:
-    #             for j in l2:
-    #                 a=i/10
-    #                 b=j/10
-    #                 print(f"Run {run}")
-    #                 run += 1
-    #                 if a+b < 1:
-    #                     current = self.classification(self.val, l1=a, l2=b)
-    #                     if current > cmax:
-    #                         l1_max = i
-    #                         l2_max = b
-    #                         cmax = current
-    #                         print(f"New Max Precision = {cmax}, l1 =  {l1_max}, l2 = , {l2_max}\n")
-    #         return l1_max, l2_max
-    #
-    #     Parallel(n_jobs=-1, verbose=32)(delayed(loops)(l1_grid, l2_grid) for l1_grid in l1_grid for l2_grid in l2_grid)
-    #     # return l1_max, l2_max
-
 
     def dp_viterbi_algorithm(self, sentence, l1,l2, tags_list):
         """
@@ -463,6 +386,12 @@ class HMM(object):
             yield word, p_max_tag
 
     def dp_viterbi_algorithm_bigram(self, words, tags_list):
+        """
+
+        :param words:
+        :param tags_list:
+        :return:
+        """
 
         for i, (word,_) in enumerate(words):
             if word not in self.vocab:
@@ -486,31 +415,46 @@ class HMM(object):
 
 
 if __name__ == "__main__":
-    ## Data Processing
-    # If trigram.pkl already in directory this will run significantly faster
+    ## Data Processing and Training
+    print("Reading in Data, Processing and Populating Probability Matrices...")
     t0 = time.time()
+    # If trigram.pkl already in directory this will run significantly faster
     hmm = HMM("AfrikaansPOSData", baseline=True)
-
-    ## Training
+    print(f"Processing and training runtime: {round(time.time() - t0,5)} seconds\n")
 
     ## Baseline Model
-    # hmm.classification(hmm.val, filename="val_base.csv")
-    # hmm.classification(hmm.test, filename="test_base.csv")
+    print("Running baseline model...")
+    t1 = time.time()
+    print("Evaluating Validation set")
+    hmm.classification(hmm.val, filename="val_base")
+    print(f"Validation evaluation runtime: {round(time.time() - t1, 5)} seconds\n")
 
-    ## Linear Interpolation Gridesearch
-    hmm.baseline = False
-    hmm.interpolation_gridsearch()
+    t2 = time.time()
+    print("Evaluating Test set")
+    hmm.classification(hmm.test, filename="test_base")
+    print(f"Test evaluation runtime: {round(time.time() - t2, 5)} seconds\n")
+
+    ## Linear Interpolation Gridsearch
+    # This takes extremely long to run but we've already used the optimal parameters for the next section
+    # print("Running interpolation parameter gridsearch...")
+    # t3 = time.time()
+    # hmm.set_baseline(False)
+    # hmm.interpolation_gridsearch()
     # print(hmm.classification(hmm.val, "test", hmm.interpolation_gridsearch()))
+    # print(f"Gridsearch evaluation runtime: {round(time.time() - t3, 5)} seconds\n")
 
     ## Linearly interpolated uni/bi/trigram model
-    # print(f"Data Processing and Training:")
-    # print(hmm.classification(hmm.val,"test"))
-    # hmm.baseline = False
-    # hmm.classification(hmm.val, filename="val_improved.csv")
-    # hmm.classification(hmm.test, filename="test_improved.csv")
+    print("Running advanced model...")
+    t4 = time.time()
+    hmm.set_baseline(False)
+    print("Evaluating Validation set")
+    hmm.classification(hmm.val, filename="val_advanced")
+    print(f"Validation evaluation runtime: {round(time.time() - t4, 5)} seconds\n")
 
+    t5 = time.time()
+    print("Evaluating Test set")
+    hmm.classification(hmm.test, filename="test_advanced")
+    print(f"Test evaluation runtime: {round(time.time() - t5, 5)} seconds\n")
 
-
-    print(f"Training runtime = {time.time()-t0} seconds")
 
 
