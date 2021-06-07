@@ -295,7 +295,7 @@ class HMM(object):
         pd.DataFrame({"Tokens": token_list, "Actual": actual_list, "Predicted": predicted_list}).to_csv(f"{filename}.csv", index=False)
 
         # Provides classification reports. Commented out to prevent significantly slower runtime
-        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_CP.csv")
+        # pd.DataFrame(metrics.classification_report(actual_list, predicted_list, output_dict=True)).transpose().to_csv(f"{filename}_CR.csv")
         # actual_reduced = []
         # predicted_reduced = []
         # for i in range(len(actual_list)):
@@ -305,7 +305,7 @@ class HMM(object):
         #     else:
         #         actual_reduced.append(actual_list[i][0])
         #         predicted_reduced.append(predicted_list[i][0])
-        # pd.DataFrame(metrics.classification_report(actual_reduced, predicted_reduced, output_dict=True)).transpose().to_csv(f"{filename}_reduced_tags_CP.csv")
+        # pd.DataFrame(metrics.classification_report(actual_reduced, predicted_reduced, output_dict=True)).transpose().to_csv(f"{filename}_reduced_tags_CR.csv")
 
         return hits / total
     def interpolation(self,word,l1,l2,tag1,tag2,tag3):
